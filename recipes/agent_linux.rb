@@ -32,6 +32,18 @@ when 'debian'
 	execute 'apt-get update' do
 		command 'apt-get update'
 	end
+
+  case node['platform_version'].to_i
+  when 'wheezy'
+    service_provider = Chef::Provider::Service::Upstart
+  when 'precise'
+    service_provider = Chef::Provider::Service::Upstart
+  when 'trusty'
+    service_provider = Chef::Provider::Service::Upstart
+  else
+    service_provider = Chef::Provider::Service::Systemd
+  end
+  
 when 'rhel'
   # Add Yum repo
   rhel_version = node['platform_version'].to_i
@@ -47,16 +59,14 @@ when 'rhel'
   execute 'Update Infra Yum repo' do
     command "yum -q makecache -y --disablerepo='*' --enablerepo='newrelic-infra'"
   end
+
+  # Detect service provider
+  if node['platform_version'] =~ /^7/
+    service_provider = Chef::Provider::Service::Systemd
+  else
+    service_provider = Chef::Provider::Service::Upstart
+  end
 end
-
-
-# Detect service provider
-if node['platform_family'] == 'rhel' && node['platform_version'] =~ /^7/
-  service_provider = Chef::Provider::Service::Systemd
-else
-  service_provider = Chef::Provider::Service::Upstart
-end
-
 
 # Install the newrelic-infra agent
 package 'newrelic-infra' do
@@ -68,7 +78,8 @@ end
 # Setup newrelic-infra service
 service "newrelic-infra" do
   provider service_provider
-  action [:enable, :start]
+  supports :status => true, :start => true, :stop => true, :restart => true
+  action :nothing
 end
 
 
@@ -81,5 +92,4 @@ template '/etc/newrelic-infra.yml' do
   variables(
     'license_key' => node['newrelic-infra']['license_key']
   )
-  notifies :restart, 'service[newrelic-infra]', :delayed
 end
